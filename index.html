@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Islas del Saber</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: full-screen 3D world, HUD pinned to corners, quiz as a centered sheet over the world. Single bright theme by choice. */
+:root{
+  --sky:#8fd3f4; --sea:#1f7fb8; --ink:#1d2433; --paper:#fffaf0; --line:#e6dcc6;
+  --sun:#ffc93c; --good:#2e9e5b; --bad:#d9534f; --shade:rgba(20,30,50,.55);
+  --display:"Fredoka","Trebuchet MS",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);font-family:var(--body);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+#world{position:fixed;inset:0;touch-action:none;display:block}
+[hidden]{display:none!important}
+button{font-family:var(--display);cursor:pointer;border:0}
+button:focus-visible,input:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+
+/* HUD */
+.hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none;z-index:5}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--paper);border-radius:999px;padding:8px 14px;font:600 18px/1 var(--display);box-shadow:0 3px 0 rgba(0,0,0,.18);display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.chip b{color:#b8860b}
+.hud .menu{pointer-events:auto;background:var(--paper);border-radius:999px;padding:10px 16px;font-size:16px;font-weight:600;box-shadow:0 3px 0 rgba(0,0,0,.18);color:var(--ink)}
+.hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);background:var(--shade);color:#fff;padding:8px 14px;border-radius:12px;font-size:15px;max-width:calc(100% - 32px);text-align:center;z-index:4;pointer-events:none;transition:opacity .4s}
+
+/* Touch controls */
+.joy{position:fixed;left:24px;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7);touch-action:none;z-index:5}
+.knob{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:var(--paper);box-shadow:0 4px 0 rgba(0,0,0,.2)}
+.btns{position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;align-items:flex-end;gap:14px;z-index:5}
+.round{width:92px;height:92px;border-radius:50%;background:var(--paper);color:var(--ink);font-size:17px;font-weight:700;box-shadow:0 5px 0 rgba(0,0,0,.22);touch-action:none}
+.talk{border-radius:22px;padding:16px 22px;font-size:20px;font-weight:700;color:#fff;box-shadow:0 5px 0 rgba(0,0,0,.25);max-width:60vw}
+
+/* Overlays */
+.overlay{position:fixed;inset:0;background:var(--shade);display:flex;align-items:center;justify-content:center;padding:16px;padding-top:calc(env(safe-area-inset-top,0px) + 16px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:10}
+.sheet{background:var(--paper);border-radius:24px;width:min(640px,100%);max-height:100%;overflow:auto;box-shadow:0 10px 0 rgba(0,0,0,.18);-webkit-user-select:text;user-select:text}
+.sheet-head{padding:18px 22px;color:#fff;border-radius:24px 24px 0 0;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sheet-head h2{margin:0;font:700 24px/1.1 var(--display);text-wrap:balance}
+.sheet-body{padding:20px 22px 24px;display:flex;flex-direction:column;gap:14px}
+.dots{display:flex;gap:6px}
+.dot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.45)}
+.dot.ok{background:#fff}.dot.no{background:rgba(0,0,0,.35)}
+.tag{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#6b6252;font-weight:700}
+.q{font:600 23px/1.35 var(--display);margin:0;text-wrap:pretty}
+.passage{background:#fff;border:2px solid var(--line);border-radius:14px;padding:12px 14px;font-size:17px;line-height:1.5}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.opts{grid-template-columns:1fr}}
+.opt{background:#fff;border:3px solid var(--line);border-radius:16px;padding:14px;font-size:19px;font-weight:600;color:var(--ink);text-align:left;min-height:64px;line-height:1.25}
+.opt:not(:disabled):active{transform:translateY(2px)}
+.opt.right{border-color:var(--good);background:#e6f6ec}
+.opt.wrong{border-color:var(--bad);background:#fbe9e8}
+.opt:disabled{cursor:default}
+.feedback{border-radius:14px;padding:12px 14px;font-size:17px;line-height:1.45}
+.feedback.good{background:#e6f6ec}.feedback.bad{background:#fbe9e8}
+.feedback strong{font-family:var(--display);font-size:19px}
+.primary{align-self:flex-end;border-radius:16px;padding:14px 26px;font-size:20px;font-weight:700;color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.2)}
+.ghost{background:transparent;color:inherit;font-size:16px;text-decoration:underline;padding:6px}
+.title{font:700 clamp(38px,8vw,64px)/1 var(--display);margin:0;color:var(--ink);letter-spacing:-.01em}
+.title span{color:var(--sea)}
+.lede{font-size:18px;line-height:1.5;margin:0;max-width:52ch}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.swatch{width:48px;height:48px;border-radius:14px;border:4px solid transparent;box-shadow:0 3px 0 rgba(0,0,0,.15)}
+.swatch[aria-pressed="true"]{border-color:var(--ink)}
+label.small{font-weight:700;font-size:15px}
+input[type=text]{font:600 20px var(--display);padding:12px 14px;border-radius:14px;border:3px solid var(--line);background:#fff;color:var(--ink);width:min(320px,100%);box-sizing:border-box}
+.islands{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.isl{border-radius:14px;padding:10px 12px;color:#fff;font:600 16px/1.2 var(--display);display:flex;justify-content:space-between;gap:8px}
+.stars{font-size:28px;letter-spacing:4px;text-align:center}
+.src{font-size:15px;line-height:1.5}
+.src li{margin-bottom:6px}
+.tabs{display:flex;background:#efe6d2;border-radius:16px;padding:4px;gap:4px}
+.tabs button{flex:1;padding:12px;border-radius:12px;background:transparent;color:#6b6252;font-size:18px;font-weight:600}
+.tabs button[aria-selected="true"]{background:#fff;color:var(--ink);box-shadow:0 2px 0 rgba(0,0,0,.1)}
+.form{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label,.field .lbl{font-weight:700;font-size:15px}
+.field input{width:100%}
+.help{font-size:14px;color:#6b6252}
+input[type=password]{font:600 22px var(--display);letter-spacing:.2em;padding:12px 14px;border-radius:14px;border:3px solid var(--line);background:#fff;color:var(--ink);box-sizing:border-box}
+input[type=password]::placeholder{letter-spacing:normal;font-size:17px}
+.err{margin:0;background:#fbe9e8;color:#8a2a26;border-radius:12px;padding:10px 12px;font-size:16px}
+.mode{font-size:13px;color:#6b6252}
+.primary:disabled{opacity:.6}
+.table-wrap{overflow-x:auto}
+.rec{width:100%;border-collapse:collapse;font-size:16px;font-variant-numeric:tabular-nums}
+.rec th{text-align:left;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#6b6252;padding:6px 8px;white-space:nowrap}
+.rec td{padding:10px 8px;border-top:2px solid var(--line);white-space:nowrap}
+.rec td:first-child{font:600 17px var(--display)}
+.rec .pip{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:8px;vertical-align:-1px}
+.rec .st{color:#b8860b;letter-spacing:2px}
+.saveNote{margin:0;font-size:14px;color:#6b6252}
+.saved{font-size:14px;color:#6b6252;text-align:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+
+<canvas id="world" aria-label="Mundo del juego"></canvas>
+
+<div class="hud">
+  <div class="chips">
+    <div class="chip" id="whoChip" hidden>🧒 <span id="who"></span></div>
+    <div class="chip" aria-label="Monedas">🪙 <span id="coins">0</span></div>
+    <div class="chip" aria-label="Estrellas">⭐ <b id="starsTotal">0</b>/15</div>
+  </div>
+  <button class="menu" id="menuBtn">Progreso</button>
+</div>
+<div class="hint" id="hint">Camina por los puentes y habla con cada guardián</div>
+
+<div class="joy" id="joy" aria-hidden="true"><div class="knob" id="knob"></div></div>
+<div class="btns">
+  <button class="talk" id="talkBtn" hidden>Hablar</button>
+  <button class="round" id="jumpBtn">Saltar</button>
+</div>
+
+<!-- Start -->
+<div class="overlay" id="start">
+  <div class="sheet">
+    <div class="sheet-body" style="gap:16px">
+      <h1 class="title">Islas del <span>Saber</span></h1>
+      <p class="lede">Recorre cinco islas, una por cada área de 5.º de primaria. Cada guardián te hará 5 retos. Gana monedas y hasta 3 estrellas por isla.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tabLogin" aria-selected="true">Entrar</button>
+        <button type="button" role="tab" id="tabNew" aria-selected="false">Crear jugador</button>
+      </div>
+
+      <form id="loginForm" class="form" autocomplete="off" novalidate>
+        <div class="field"><label for="liUser">Usuario</label>
+          <input type="text" id="liUser" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="16" placeholder="ej. mateo_11"></div>
+        <div class="field"><label for="liPin">PIN</label>
+          <input type="password" id="liPin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••"></div>
+        <p class="err" id="liErr" hidden></p>
+        <button class="primary" id="liBtn" type="submit" style="background:var(--sea)">¡A jugar!</button>
+      </form>
+
+      <form id="newForm" class="form" autocomplete="off" novalidate hidden>
+        <div class="field"><label for="nwName">Tu nombre</label>
+          <input type="text" id="nwName" maxlength="20" placeholder="Así te verán en el juego"></div>
+        <div class="field"><label for="nwUser">Usuario (para entrar)</label>
+          <input type="text" id="nwUser" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="16" placeholder="letras, números y _">
+          <span class="help">De 3 a 16 caracteres, sin espacios ni tildes.</span></div>
+        <div class="row" style="gap:12px;align-items:flex-start">
+          <div class="field" style="flex:1;min-width:120px"><label for="nwPin">PIN secreto</label>
+            <input type="password" id="nwPin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="4 a 6 números"></div>
+          <div class="field" style="flex:1;min-width:120px"><label for="nwPin2">Repite el PIN</label>
+            <input type="password" id="nwPin2" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="otra vez"></div>
+        </div>
+        <div class="field"><span class="lbl">Color de tu polo</span><div class="row" id="swatches"></div></div>
+        <p class="err" id="nwErr" hidden></p>
+        <button class="primary" id="nwBtn" type="submit" style="background:var(--sea)">Crear y jugar</button>
+      </form>
+
+      <div class="row" style="justify-content:space-between">
+        <button class="ghost" id="srcBtn1" type="button">Fuentes (para papás)</button>
+        <span class="mode" id="modeTag"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quiz -->
+<div class="overlay" id="quiz" hidden>
+  <div class="sheet">
+    <div class="sheet-head" id="qHead">
+      <h2 id="qTitle">Isla</h2>
+      <div class="dots" id="qDots"></div>
+    </div>
+    <div class="sheet-body" id="qBody"></div>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="overlay" id="prog" hidden>
+  <div class="sheet">
+    <div class="sheet-body">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="title" style="font-size:34px" id="progTitle">Tu progreso</h2>
+        <span class="chip" style="box-shadow:none;border:2px solid var(--line)">🪙 <span id="progCoins">0</span></span>
+      </div>
+      <div class="table-wrap">
+        <table class="rec">
+          <thead><tr><th scope="col">Isla</th><th scope="col">Mejor</th><th scope="col">Rondas</th><th scope="col">Aciertos</th><th scope="col">Última vez</th></tr></thead>
+          <tbody id="progList"></tbody>
+        </table>
+      </div>
+      <p class="saveNote" id="saveNote"></p>
+      <div class="field"><span class="lbl">Color de tu polo</span><div class="row" id="swatches2"></div></div>
+      <div class="row" style="justify-content:space-between">
+        <div class="row" style="gap:4px">
+          <button class="ghost" id="logoutBtn" type="button">Cambiar de jugador</button>
+          <button class="ghost" id="srcBtn2" type="button">Fuentes</button>
+        </div>
+        <button class="primary" id="progClose" type="button" style="background:var(--sea)">Seguir jugando</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sources -->
+<div class="overlay" id="srcs" hidden>
+  <div class="sheet">
+    <div class="sheet-body src">
+      <h2 class="title" style="font-size:30px">Fuentes del contenido</h2>
+      <p style="margin:0">Cada reto indica la competencia del Currículo Nacional que trabaja. Todo se basa en el ciclo V (5.º y 6.º de primaria).</p>
+      <ul style="margin:0;padding-left:20px">
+        <li><b>Programa Curricular de Educación Primaria</b>, MINEDU. Aprobado por RM N.° 281-2016-ED, modificado por RM N.° 159-2017-ED. Competencias, estándares del ciclo V y desempeños de 5.º grado.</li>
+        <li><b>Matemática:</b> estándar del ciclo V de "Resuelve problemas de cantidad" (números hasta seis cifras, divisores y múltiplos, decimales hasta centésimos, fracción como operador, equivalencias entre fracciones, decimales y porcentajes, potencias cuadrada y cúbica, conversiones de masa y tiempo). Las preguntas se generan y se resuelven con cálculo automático.</li>
+        <li><b>Comunicación:</b> desempeños de 5.º de "Lee" y "Escribe" (sentido figurado, comparaciones, personificaciones, hipérboles, conectores de causa y contraste, punto aparte).</li>
+        <li><b>Personal Social:</b> desempeños de 5.º (Virreinato e Independencia, participación de hombres y mujeres, recursos renovables y no renovables, 3R, áreas naturales protegidas, publicidad, ahorro, derechos del consumidor, convivencia y cultura).</li>
+        <li><b>Ciencia y Tecnología:</b> competencias "Explica el mundo físico" e "Indaga" (órganos y sistemas y funciones vitales, fotosíntesis, Tierra, materia).</li>
+        <li><b>Inglés:</b> desempeños de 5.º (hobbies, deportes, instrumentos, comida saludable, frutas y verduras, how many/how much, there is/are, some/any, like / be good at + -ing, simple past).</li>
+      </ul>
+      <p style="margin:0;color:#6b6252">Los datos de cada pregunta (fechas, hechos científicos) son conocimientos establecidos que corresponden a esos desempeños. Conviene revisarlos junto con los cuadernos de trabajo de su colegio.</p>
+      <button class="primary" id="srcClose" style="background:var(--sea)">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------------- Content ---------------- */
+const C = {
+  mat:{name:"Matemática",color:"#e8743b",comp:"Resuelve problemas de cantidad"},
+  com:{name:"Comunicación",color:"#8a5cc9",comp:"Lee / Escribe textos en su lengua materna"},
+  ps:{name:"Personal Social",color:"#c8453a",comp:""},
+  cyt:{name:"Ciencia y Tecnología",color:"#2e9e5b",comp:""},
+  ing:{name:"Inglés",color:"#2f78c4",comp:""}
+};
+const AREAS = ["mat","com","ps","cyt","ing"];
+
+// Static banks: first option is always correct (shuffled on screen).
+const BANK = {
+com:[
+ {c:"Lee textos · Sentido figurado",q:"«Tengo tanta hambre que me comería un elefante». ¿Qué recurso usa esta oración?",o:["Hipérbole (una exageración)","Personificación","Comparación","Pregunta"],e:"Es una hipérbole: exagera mucho para expresar cuánta hambre tiene."},
+ {c:"Lee textos · Sentido figurado",q:"«El sol nos sonreía desde el cielo». ¿Qué recurso usa esta oración?",o:["Personificación","Hipérbole","Comparación","Rima"],e:"Es una personificación: le da al sol una acción de persona (sonreír)."},
+ {c:"Lee textos · Sentido figurado",q:"«Sus ojos brillaban como estrellas». ¿Qué recurso usa esta oración?",o:["Comparación","Hipérbole","Personificación","Refrán"],e:"Es una comparación: relaciona dos cosas usando la palabra «como»."},
+ {c:"Escribe textos · Conectores",q:"Completa: «Quería ir al parque; ______, empezó a llover».",o:["sin embargo","porque","además","primero"],e:"«Sin embargo» es un conector de contraste: une dos ideas que se oponen."},
+ {c:"Escribe textos · Conectores",q:"Completa: «Llevé paraguas ______ el cielo estaba nublado».",o:["porque","sin embargo","aunque","finalmente"],e:"«Porque» es un conector de causa: explica por qué llevó paraguas."},
+ {c:"Escribe textos · Ortografía",q:"¿Para qué sirve el punto aparte?",o:["Para separar párrafos","Para separar palabras de una lista","Para hacer una pregunta","Para terminar solo el título"],e:"El punto aparte separa un párrafo del siguiente."},
+ {c:"Escribe textos · Ortografía",q:"¿Qué oración está bien escrita?",o:["¿Dónde queda tu colegio?","Dónde queda tu colegio?","¿Dónde queda tu colegio.","Donde queda tu colegio"],e:"En castellano la pregunta lleva signo de apertura (¿) y de cierre (?)."},
+ {c:"Lee textos · Refranes",q:"¿Qué quiere decir el refrán «Más vale prevenir que lamentar»?",o:["Es mejor tomar precauciones antes de que pase algo malo","Hay que llorar cuando algo sale mal","Es mejor no hacer nada","Hay que lamentarse siempre"],e:"El refrán aconseja anticiparse para evitar problemas."},
+ {c:"Escribe textos · Registro formal",q:"Vas a escribir una carta a la directora del colegio. ¿Qué saludo es formal?",o:["Estimada directora:","¡Hola, dire!","Qué tal, amiga:","Oe, ¿cómo estás?"],e:"En una carta formal se usa un saludo respetuoso como «Estimada directora:»."},
+ {c:"Lee textos · Información explícita",p:"Rosa y su abuelo siembran papas en la chacra cada octubre. Este año también plantaron habas. Cuando llegan las lluvias, Rosa revisa que el agua no se empoce en los surcos.",q:"Según el texto, ¿en qué mes siembran papas?",o:["En octubre","En las lluvias","En enero","El texto no lo dice"],e:"El texto dice claramente: «siembran papas en la chacra cada octubre»."},
+ {c:"Lee textos · Significado por el contexto",p:"Rosa y su abuelo siembran papas en la chacra cada octubre. Este año también plantaron habas. Cuando llegan las lluvias, Rosa revisa que el agua no se empoce en los surcos.",q:"En el texto, ¿qué significa «empoce»?",o:["Que el agua se quede estancada","Que el agua hierva","Que el agua se congele","Que el agua sea limpia"],e:"Por el contexto, Rosa cuida que el agua no se quede acumulada y quieta en los surcos."},
+ {c:"Lee textos · Propósito",q:"Un afiche dice: «¡Cierra el caño mientras te cepillas! Cada gota cuenta». ¿Cuál es su propósito?",o:["Convencer de ahorrar agua","Contar un cuento","Dar una receta","Informar la hora"],e:"El afiche busca convencer al lector de cuidar el agua."}
+],
+ps:[
+ {c:"Construye interpretaciones históricas",q:"¿Qué etapa de la historia del Perú vino inmediatamente después del Virreinato?",o:["La Independencia (Emancipación)","El Imperio incaico","Las culturas preíncas","La Conquista"],e:"El orden es: preíncas, incas, Conquista, Virreinato, Independencia y República."},
+ {c:"Construye interpretaciones históricas",q:"¿Quién proclamó la independencia del Perú el 28 de julio de 1821 en Lima?",o:["José de San Martín","Simón Bolívar","Túpac Amaru II","Francisco Pizarro"],e:"José de San Martín proclamó la independencia en Lima el 28 de julio de 1821."},
+ {c:"Construye interpretaciones históricas",q:"¿Qué batalla de 1824 aseguró la independencia del Perú y de Sudamérica?",o:["La batalla de Ayacucho","La batalla de Arica","La batalla de Angamos","La batalla de Tarapacá"],e:"La batalla de Ayacucho (9 de diciembre de 1824) selló la independencia."},
+ {c:"Construye interpretaciones históricas · Mujeres en la historia",q:"¿Qué mujer es heroína de la Independencia porque se negó a delatar a los patriotas?",o:["María Parado de Bellido","Chabuca Granda","Clorinda Matto de Turner","Rosa de Santa María"],e:"María Parado de Bellido prefirió morir antes que revelar a los patriotas (1822)."},
+ {c:"Gestiona el espacio y el ambiente",q:"¿Cuál de estos es un recurso natural NO renovable?",o:["El petróleo","La energía del sol","El viento","Los árboles de un bosque cuidado"],e:"El petróleo tarda millones de años en formarse; cuando se gasta, no se recupera."},
+ {c:"Gestiona el espacio y el ambiente",q:"¿Qué significan las 3R para cuidar el ambiente?",o:["Reducir, reusar y reciclar","Romper, regalar y reír","Recoger, regar y revisar","Reír, correr y reciclar"],e:"Las 3R son reducir, reusar (reutilizar) y reciclar."},
+ {c:"Gestiona el espacio y el ambiente",q:"¿Cuál de estos lugares es un área natural protegida del Perú?",o:["El Parque Nacional del Manu","La Plaza de Armas de Lima","Un centro comercial","El estadio nacional"],e:"El Manu, en Madre de Dios y Cusco, es un parque nacional que protege su biodiversidad."},
+ {c:"Gestiona el espacio y el ambiente · Riesgo de desastres",q:"Durante un sismo en el colegio, ¿qué debes hacer?",o:["Ir con calma a la zona segura señalada","Correr por las escaleras empujando","Esconderte en el baño","Salir a la calle solo"],e:"Hay que conocer y usar las zonas seguras, como en los simulacros."},
+ {c:"Gestiona los recursos económicos",q:"En la economía, ¿quiénes producen bienes y servicios para venderlos?",o:["Las empresas","Solo los niños","Los parques","Los ríos"],e:"Las empresas producen bienes y servicios; las familias los compran y el Estado regula."},
+ {c:"Gestiona los recursos económicos · Publicidad",q:"Un anuncio dice: «Con estas zapatillas serás el más popular». ¿Qué busca el anuncio?",o:["Convencerte de comprar","Enseñarte matemáticas","Informarte del clima","Contarte una noticia"],e:"La publicidad busca influir en tus decisiones de consumo."},
+ {c:"Gestiona los recursos económicos · Consumidor",q:"¿Cuál es un derecho del consumidor?",o:["Recibir información clara y verdadera del producto","Llevarse productos sin pagar","Que todo sea gratis","No recibir boleta"],e:"El consumidor tiene derecho a información veraz sobre lo que compra."},
+ {c:"Gestiona los recursos económicos · Ahorro",q:"Recibes S/ 10 cada semana y quieres una pelota de S/ 40. ¿Qué es un buen plan de ahorro?",o:["Guardar una parte cada semana hasta juntar S/ 40","Gastar todo apenas lo recibes","Pedir prestado y no pagar","Esperar sin guardar nada"],e:"Un plan de ahorro separa una parte del dinero con una meta clara."},
+ {c:"Convive y participa democráticamente",q:"Dos compañeros discuten por un juego. ¿Qué es lo mejor que puedes hacer?",o:["Ayudar a que dialoguen o buscar un mediador","Burlarte de ellos","Tomar el juego y llevártelo","Gritar más fuerte"],e:"El diálogo y la mediación ayudan a resolver conflictos."},
+ {c:"Convive y participa democráticamente · Diversidad cultural",q:"En el Perú, ¿cómo se llama a los descendientes de inmigrantes chinos?",o:["Tusán","Nisei","Criollo","Mestizo"],e:"«Tusán» se usa para los descendientes de chinos; «nisei» para la segunda generación de japoneses."},
+ {c:"Construye su identidad · Emociones",q:"Estás muy enojado. ¿Qué estrategia te ayuda a calmarte?",o:["Respirar lento y profundo","Golpear la mesa","Gritarle a alguien","Romper tus cosas"],e:"La respiración, la relajación y alejarse un momento ayudan a regular las emociones."}
+],
+cyt:[
+ {c:"Explica el mundo físico · Seres vivos",q:"¿Cuáles son los órganos principales del sistema respiratorio?",o:["Los pulmones","Los riñones","El estómago","Los huesos"],e:"En los pulmones el aire intercambia oxígeno y dióxido de carbono con la sangre."},
+ {c:"Explica el mundo físico · Seres vivos",q:"¿Qué órgano bombea la sangre por todo el cuerpo?",o:["El corazón","El hígado","El cerebro","Los pulmones"],e:"El corazón es la bomba del sistema circulatorio."},
+ {c:"Explica el mundo físico · Nutrición",q:"¿En qué órgano se absorben la mayoría de los nutrientes de los alimentos?",o:["En el intestino delgado","En la boca","En el esófago","En los pulmones"],e:"En el intestino delgado los nutrientes pasan a la sangre."},
+ {c:"Explica el mundo físico · Seres vivos",q:"¿Qué órganos filtran la sangre y forman la orina?",o:["Los riñones","Los pulmones","El corazón","Los intestinos"],e:"Los riñones pertenecen al sistema excretor."},
+ {c:"Explica el mundo físico · Seres vivos",q:"¿Qué órgano controla y coordina las funciones del cuerpo?",o:["El cerebro","El estómago","La piel","El corazón"],e:"El cerebro es parte del sistema nervioso y coordina el cuerpo."},
+ {c:"Explica el mundo físico · Plantas",q:"En la fotosíntesis, ¿qué necesita la planta para fabricar su alimento?",o:["Luz solar, agua y dióxido de carbono","Solo tierra","Oscuridad y hielo","Azúcar y sal"],e:"Con luz, agua y dióxido de carbono la planta fabrica su alimento y libera oxígeno."},
+ {c:"Explica el mundo físico · Ecosistemas",q:"En una cadena alimenticia, ¿quiénes son los productores?",o:["Las plantas","Los leones","Los hongos","Las personas"],e:"Las plantas producen su propio alimento; por eso inician la cadena."},
+ {c:"Explica el mundo físico · Tierra y universo",q:"¿Qué movimiento de la Tierra produce el día y la noche?",o:["La rotación","La traslación","La lluvia","El viento"],e:"La Tierra gira sobre su eje (rotación) aproximadamente cada 24 horas."},
+ {c:"Explica el mundo físico · Tierra y universo",q:"¿Cuánto dura aproximadamente una vuelta de la Tierra alrededor del Sol?",o:["365 días","24 horas","30 días","7 días"],e:"La traslación dura aproximadamente 365 días: un año."},
+ {c:"Explica el mundo físico · Materia",q:"Cuando el agua líquida se convierte en vapor, ¿cómo se llama ese cambio?",o:["Evaporación","Solidificación","Fusión","Condensación"],e:"Pasar de líquido a gas es evaporación."},
+ {c:"Explica el mundo físico · Energía",q:"¿Cuál es una fuente de energía renovable?",o:["El sol","El petróleo","El carbón","El gas natural"],e:"La energía solar no se agota; el petróleo, el carbón y el gas sí."},
+ {c:"Indaga mediante métodos científicos",q:"Quieres saber si la luz afecta el crecimiento de una planta. ¿Qué debes cambiar en tu experimento?",o:["Solo la cantidad de luz; lo demás igual","El agua, la tierra y la luz a la vez","Nada, solo mirar","El tipo de planta y la maceta"],e:"En un experimento justo se cambia una sola variable y las demás se mantienen iguales."}
+],
+ing:[
+ {c:"Reads and writes in English · Hobbies",q:"She is good at ______ the guitar.",o:["playing","play","plays","played"],e:"After «be good at» we use the verb + -ing: playing."},
+ {c:"Reads and writes in English · Hobbies",q:"I like ______ football with my friends.",o:["playing","plays","to played","play's"],e:"«Like» + verb-ing: I like playing football."},
+ {c:"Reads and writes in English · Hobbies",q:"My hobby is ______ books.",o:["reading","read","reads","readed"],e:"«Reading» is the -ing form: my hobby is reading."},
+ {c:"Reads and writes in English · How many / How much",q:"How ______ apples are there?",o:["many","much","old","far"],e:"«How many» is for things we can count, like apples."},
+ {c:"Reads and writes in English · How many / How much",q:"How ______ milk do you need?",o:["much","many","old","long"],e:"«How much» is for things we can't count one by one, like milk."},
+ {c:"Reads and writes in English · There is / There are",q:"There ______ some bananas on the table.",o:["are","is","am","be"],e:"«Bananas» is plural, so we use «there are»."},
+ {c:"Reads and writes in English · Some / Any",q:"Is there ______ milk in the fridge?",o:["any","some a","many","a"],e:"In questions we usually use «any»: Is there any milk?"},
+ {c:"Reads and writes in English · Simple past",q:"Yesterday I ______ to the park.",o:["went","go","goes","going"],e:"«Go» is irregular: its past is «went»."},
+ {c:"Reads and writes in English · Simple past",q:"Last Sunday we ______ volleyball.",o:["played","play","playing","plays"],e:"«Play» is regular: its past is «played»."},
+ {c:"Reads and writes in English · Simple past",q:"«Did you eat breakfast?» — «Yes, I ______.»",o:["did","do","eat","was"],e:"Short answer to a «Did…?» question: Yes, I did."},
+ {c:"Reads and writes in English · Healthy food",q:"Which one is healthy food?",o:["carrot","candy","chips","soda"],e:"A carrot is a vegetable: healthy food."},
+ {c:"Reads and writes in English · Music",q:"Which one is a musical instrument?",o:["violin","basketball","kitchen","banana"],e:"A violin is a musical instrument."},
+ {c:"Reads and writes in English · Fruits and vegetables",q:"Which one is a fruit?",o:["mango","broccoli","potato","onion"],e:"A mango is a fruit; the others are vegetables."}
+]
+};
+
+/* Math: generated and computed, never typed by hand */
+const R=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const fmtN=n=>String(n).replace(/\B(?=(\d{3})+(?!\d))/g," ");
+const fmtC=c=>Math.floor(c/100)+","+String(c%100).padStart(2,"0"); // cents -> "3,45"
+function withDistractors(ans, cands, fmt){
+  const set=[ans]; for(const d of cands){ if(d>0 && !set.includes(d)) set.push(d); if(set.length===4) break; }
+  let k=1; while(set.length<4){ const d=ans+k*(k%2?1:-1)*Math.max(1,Math.round(ans*0.1)); if(d>0&&!set.includes(d)) set.push(d); k++; }
+  return set.map(fmt);
+}
+const MATH_GEN=[
+ function place(){
+  const names=["unidades","decenas","centenas","unidades de millar","decenas de millar","centenas de millar"];
+  let n,k,d; do{ n=R(100000,999999); k=R(1,5); d=Math.floor(n/10**k)%10; }while(d===0);
+  const ans=d*10**k;
+  return {c:"Resuelve problemas de cantidad · Valor posicional",q:`En el número ${fmtN(n)}, ¿cuál es el valor de la cifra que está en las ${names[k]}?`,o:withDistractors(ans,[d,d*10**(k+1),d*10**(k-1)],fmtN),e:`La cifra ${d} está en las ${names[k]}, así que vale ${d} × ${fmtN(10**k)} = ${fmtN(ans)}.`};
+ },
+ function fraction(){
+  const den=pick([2,3,4,5,10]); const num=R(1,den-1); const tot=den*R(3,20); const unit=tot/den; const ans=num*unit;
+  return {c:"Resuelve problemas de cantidad · Fracción como operador",q:`En el salón hay ${tot} caramelos y repartes ${num}/${den} de ellos. ¿Cuántos caramelos repartes?`,o:withDistractors(ans,[unit,tot-ans,ans+den,ans+unit],String),e:`${tot} ÷ ${den} = ${unit}; luego ${unit} × ${num} = ${ans}.`};
+ },
+ function equiv(){
+  const T=[["1/2","0,5",50],["1/4","0,25",25],["3/4","0,75",75],["1/5","0,2",20],["1/10","0,1",10]];
+  const t=pick(T); const others=T.filter(x=>x!==t);
+  if(Math.random()<.5){
+   return {c:"Resuelve problemas de cantidad · Equivalencias",q:`¿Qué porcentaje es igual a la fracción ${t[0]}?`,o:[t[2]+"%",...others.slice(0,3).map(x=>x[2]+"%")],e:`${t[0]} = ${t[1]} = ${t[2]}%.`};
+  }
+  return {c:"Resuelve problemas de cantidad · Equivalencias",q:`¿Qué número decimal es igual a ${t[2]}%?`,o:[t[1],...others.slice(0,3).map(x=>x[1])],e:`${t[2]}% = ${t[2]}/100 = ${t[1]}.`};
+ },
+ function power(){
+  if(Math.random()<.6){ const b=R(2,12), a=b*b;
+   return {c:"Resuelve problemas de cantidad · Potencia cuadrada",q:`¿Cuánto es ${b}²?`,o:withDistractors(a,[b*2,a+b,a-1],String),e:`${b}² = ${b} × ${b} = ${a}.`};}
+  const b=R(2,6), a=b*b*b;
+  return {c:"Resuelve problemas de cantidad · Potencia cúbica",q:`¿Cuánto es ${b}³?`,o:withDistractors(a,[b*3,b*b,a+b],String),e:`${b}³ = ${b} × ${b} × ${b} = ${a}.`};
+ },
+ function money(){
+  const a=R(150,950), b=R(120,890), ans=a+b;
+  const items=pick([["un cuaderno","un lapicero"],["un pan con palta","una chicha morada"],["una regla","un borrador"]]);
+  return {c:"Resuelve problemas de cantidad · Decimales hasta centésimos",q:`Compras ${items[0]} a S/ ${fmtC(a)} y ${items[1]} a S/ ${fmtC(b)}. ¿Cuánto pagas en total?`,o:withDistractors(ans,[ans+10,ans-100,ans+100,ans-10],c=>"S/ "+fmtC(c)),e:`S/ ${fmtC(a)} + S/ ${fmtC(b)} = S/ ${fmtC(ans)}. Suma céntimos con céntimos y soles con soles.`};
+ },
+ function multiple(){
+  const n=R(3,9), ans=n*R(4,12); const c=[]; for(let d of [1,2,-1,-2,3]){ if((ans+d)%n!==0) c.push(ans+d); }
+  return {c:"Resuelve problemas de cantidad · Múltiplos",q:`¿Cuál de estos números es múltiplo de ${n}?`,o:[String(ans),...c.slice(0,3).map(String)],e:`${ans} = ${n} × ${ans/n}, por eso es múltiplo de ${n}.`};
+ },
+ function divisor(){
+  const N=pick([24,30,36,40,45,48,60,72]); const divs=[]; const non=[];
+  for(let i=2;i<N;i++){ (N%i===0?divs:non).push(i); }
+  const ans=pick(divs); const nd=non.filter(x=>x<=N/2).sort(()=>Math.random()-.5).slice(0,3);
+  return {c:"Resuelve problemas de cantidad · Divisores",q:`¿Cuál de estos números es divisor de ${N}?`,o:[String(ans),...nd.map(String)],e:`${N} ÷ ${ans} = ${N/ans}, división exacta. Por eso ${ans} es divisor de ${N}.`};
+ },
+ function convert(){
+  const t=pick([
+   {f:"kg",to:"g",m:1000,w:"kilogramos",tw:"gramos",ctx:"arroz"},
+   {f:"h",to:"min",m:60,w:"horas",tw:"minutos",ctx:"viaje"},
+   {f:"min",to:"s",m:60,w:"minutos",tw:"segundos",ctx:"carrera"}]);
+  const v=R(2,9), ans=v*t.m;
+  return {c:"Resuelve problemas de cantidad · Conversiones de medida",q:`¿Cuántos ${t.tw} hay en ${v} ${t.w}?`,o:withDistractors(ans,[v*10,v*100,ans+t.m],x=>fmtN(x)+" "+t.to),e:`1 ${t.f} = ${fmtN(t.m)} ${t.to}; entonces ${v} × ${fmtN(t.m)} = ${fmtN(ans)} ${t.to}.`};
+ }
+];
+
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function buildRound(area){
+  if(area==="mat"){ return shuffle(MATH_GEN).slice(0,5).map(g=>g()); }
+  return shuffle(BANK[area]).slice(0,5);
+}
+
+/* ---------------- Backend ---------------- */
+/* Pega aquí los datos de tu proyecto Supabase (Project Settings > API).
+   Si se dejan vacíos, el juego funciona en "modo local": los jugadores
+   se guardan solo en este dispositivo. */
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
+
+const $=id=>document.getElementById(id);
+const store={ get(k){ try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;} },
+              set(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} } };
+const ONLINE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+async function remote(fn,args){
+  let res;
+  try{
+    res=await fetch(SUPABASE_URL.replace(/\/$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",
+      headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY,"Authorization":"Bearer "+SUPABASE_ANON_KEY},
+      body:JSON.stringify(args)});
+  }catch(e){ return {error:"red"}; }
+  if(!res.ok) return {error:"servidor"};
+  try{ return await res.json(); }catch(e){ return {error:"servidor"}; }
+}
+
+/* Local backend: same functions and JSON shape, kept in this browser only. */
+const LOCAL_KEY="islas-saber-local-v2";
+function localDB(){ return store.get(LOCAL_KEY)||{players:{},sessions:{}}; }
+function hashPin(u,p){ let h=5381; const s=u+":"+p; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return String(h); }
+function localState(db,u,token){ const p=db.players[u]; return {token,player:{username:u,display_name:p.display_name,shirt:p.shirt,coins:p.coins},progress:p.progress}; }
+function uid(){ return "l-"+Math.random().toString(36).slice(2)+Date.now().toString(36); }
+async function local(fn,a){
+  const db=localDB(); const save=()=>store.set(LOCAL_KEY,db);
+  const who=t=>db.sessions[t];
+  if(fn==="register_player"){
+    const u=String(a.p_username||"").trim().toLowerCase();
+    if(!/^[a-z0-9_]{3,16}$/.test(u)) return {error:"usuario_invalido"};
+    if(!/^[0-9]{4,6}$/.test(a.p_pin||"")) return {error:"pin_invalido"};
+    if(db.players[u]) return {error:"usuario_existe"};
+    db.players[u]={display_name:(a.p_display||"").trim().slice(0,20)||u,pin:hashPin(u,a.p_pin),shirt:a.p_shirt,coins:0,progress:{}};
+    const t=uid(); db.sessions[t]=u; save(); return localState(db,u,t);
+  }
+  if(fn==="login_player"){
+    const u=String(a.p_username||"").trim().toLowerCase(); const p=db.players[u];
+    if(!p||p.pin!==hashPin(u,a.p_pin||"")) return {error:"credenciales"};
+    const t=uid(); db.sessions[t]=u; save(); return localState(db,u,t);
+  }
+  const u=who(a.p_token); if(!u||!db.players[u]) return {error:"sesion"};
+  const p=db.players[u];
+  if(fn==="get_state") return localState(db,u,a.p_token);
+  if(fn==="save_round"){
+    const c=a.p_correct, st=c===5?3:c===4?2:c===3?1:0; const g=p.progress[a.p_area]||{best_stars:0,rounds:0,correct:0,answered:0};
+    p.progress[a.p_area]={best_stars:Math.max(g.best_stars,st),rounds:g.rounds+1,correct:g.correct+c,answered:g.answered+5,last_played:new Date().toISOString()};
+    p.coins+=c*10; save(); return localState(db,u,a.p_token);
+  }
+  if(fn==="update_shirt"){ p.shirt=a.p_shirt; save(); return localState(db,u,a.p_token); }
+  if(fn==="logout_player"){ delete db.sessions[a.p_token]; save(); return {ok:true}; }
+  return {error:"servidor"};
+}
+const api=(fn,args)=>ONLINE?remote(fn,args):local(fn,args);
+
+const ERR={
+  credenciales:"Usuario o PIN incorrecto.",
+  usuario_existe:"Ese usuario ya existe. Prueba con otro.",
+  usuario_invalido:"El usuario debe tener de 3 a 16 caracteres: letras minúsculas, números o _ (sin espacios ni tildes).",
+  pin_invalido:"El PIN debe tener de 4 a 6 números.",
+  red:"No hay conexión a internet. Revísala e inténtalo de nuevo.",
+  servidor:"El servidor no respondió. Inténtalo en un momento."
+};
+const errText=r=> r.error==="bloqueado" ? `Demasiados intentos. Espera ${r.minutos||10} minutos e inténtalo otra vez.` : (ERR[r.error]||ERR.servidor);
+
+/* ---------------- Player state ---------------- */
+const TOKEN_KEY=ONLINE?"islas-saber-token":"islas-saber-token-local";
+const PENDING_KEY="islas-saber-pending";
+let me=null; // {token, player, progress}
+let pickShirt="#f2c14e";
+const starsOf=a=> (me&&me.progress[a]&&me.progress[a].best_stars)||0;
+function applyState(r){
+  me=r; store.set(TOKEN_KEY,r.token);
+  $("who").textContent=r.player.display_name; $("whoChip").hidden=false;
+  refreshHud(); makePlayer(); makeNameTag();
+}
+function refreshHud(){
+  $("coins").textContent=me?me.player.coins:0;
+  $("starsTotal").textContent=AREAS.reduce((s,a)=>s+starsOf(a),0);
+}
+async function flushPending(){
+  const q=store.get(PENDING_KEY)||[]; if(!q.length||!me) return;
+  const rest=[];
+  for(const item of q){
+    if(item.token!==me.token){ continue; } // belongs to a session that ended; drop
+    const r=await api("save_round",{p_token:item.token,p_area:item.area,p_correct:item.correct});
+    if(r.error==="red"||r.error==="servidor") rest.push(item); else if(!r.error) me=r;
+  }
+  store.set(PENDING_KEY,rest); if(me) applyState(me);
+}
+
+/* ---------------- 3D world ---------------- */
+const canvas=$("world");
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x8fd3f4);
+scene.fog=new THREE.Fog(0x8fd3f4,70,140);
+const camera=new THREE.PerspectiveCamera(55,1,0.1,300);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x5a8f6a,0.75));
+const sun=new THREE.DirectionalLight(0xfff2d6,0.9);
+sun.position.set(30,50,20); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+Object.assign(sun.shadow.camera,{left:-50,right:50,top:50,bottom:-50,near:1,far:130});
+scene.add(sun);
+
+const mat=c=>new THREE.MeshLambertMaterial({color:c});
+function box(w,h,d,c,x,y,z,parent){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c)); m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; (parent||scene).add(m); return m; }
+
+// Sea
+const sea=new THREE.Mesh(new THREE.CircleGeometry(160,48),new THREE.MeshLambertMaterial({color:0x1f7fb8}));
+sea.rotation.x=-Math.PI/2; sea.position.y=-0.6; sea.receiveShadow=true; scene.add(sea);
+
+// Walkable geometry
+const ISLANDS=[]; const BRIDGES=[]; const SOLIDS=[];
+function island(x,z,r,top,side){
+  const g=new THREE.Group(); g.position.set(x,0,z); scene.add(g);
+  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(r,r+1.2,3,24),mat(side)); cyl.position.y=-1.5; cyl.receiveShadow=true; g.add(cyl);
+  const grass=new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.3,24),mat(top)); grass.position.y=0.02-0.15; grass.receiveShadow=true; g.add(grass);
+  ISLANDS.push({x,z,r:r-0.7}); return g;
+}
+function bridge(ax,az,bx,bz){
+  const dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz),ang=Math.atan2(dx,dz);
+  const g=new THREE.Group(); g.position.set((ax+bx)/2,0,(az+bz)/2); g.rotation.y=ang; scene.add(g);
+  const planks=Math.floor(len/1.1);
+  for(let i=0;i<planks;i++){ const p=box(3.2,0.25,0.95,i%2?0xb07a45:0xc28a52,0,-0.1,-len/2+0.55+i*1.1,g); p.castShadow=false; }
+  for(const s of [-1.7,1.7]){ box(0.18,0.18,len,0x7a4f2a,s,0.8,0,g); for(let i=0;i<=len;i+=3){ box(0.25,1,0.25,0x7a4f2a,s,0.35,-len/2+i,g);} }
+  BRIDGES.push({ax,az,ux:dx/len,uz:dz/len,len,w:1.35});
+}
+function walkable(x,z){
+  for(const s of SOLIDS){ if(Math.hypot(x-s.x,z-s.z)<s.r) return false; }
+  for(const i of ISLANDS){ if(Math.hypot(x-i.x,z-i.z)<i.r) return true; }
+  for(const b of BRIDGES){ const rx=x-b.ax, rz=z-b.az; const t=rx*b.ux+rz*b.uz; const p=Math.abs(rx*b.uz-rz*b.ux); if(t>=0&&t<=b.len&&p<=b.w) return true; }
+  return false;
+}
+
+// Text sprites
+const LABELS=[];
+function label(text,bg,fg,scale){
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false})); sp.renderOrder=10;
+  const L={sp,text,bg,fg,scale:scale||1}; LABELS.push(L); drawLabel(L); return sp;
+}
+function drawLabel(L){
+  const {sp,text,bg,fg}=L;
+  const cv=document.createElement("canvas"); const ctx=cv.getContext("2d");
+  ctx.font="700 64px Fredoka, 'Trebuchet MS', sans-serif";
+  const w=Math.ceil(ctx.measureText(text).width)+64; cv.width=w; cv.height=110;
+  ctx.font="700 64px Fredoka, 'Trebuchet MS', sans-serif";
+  ctx.fillStyle=bg; const r=40; ctx.beginPath();
+  ctx.moveTo(r,6);ctx.arcTo(w-6,6,w-6,104,r);ctx.arcTo(w-6,104,6,104,r);ctx.arcTo(6,104,6,6,r);ctx.arcTo(6,6,w-6,6,r);ctx.fill();
+  ctx.fillStyle=fg; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text,w/2,58);
+  const tex=new THREE.CanvasTexture(cv); tex.minFilter=THREE.LinearFilter;
+  if(sp.material.map) sp.material.map.dispose();
+  sp.material.map=tex; sp.material.needsUpdate=true;
+  const s=L.scale; sp.scale.set(w/110*1.6*s,1.6*s,1);
+}
+
+// Blocky character
+function character(shirt,pants,skin,hair){
+  const g=new THREE.Group();
+  const legL=box(0.55,1.1,0.55,pants,-0.32,0.55,0,g), legR=box(0.55,1.1,0.55,pants,0.32,0.55,0,g);
+  const body=box(1.25,1.3,0.7,shirt,0,1.75,0,g);
+  const armL=box(0.45,1.2,0.5,skin,-0.88,1.8,0,g), armR=box(0.45,1.2,0.5,skin,0.88,1.8,0,g);
+  [legL,legR,armL,armR].forEach(m=>{ m.geometry.translate(0,-m.geometry.parameters.height/2+0.05,0); m.position.y+= m.geometry.parameters.height/2-0.05; });
+  const head=box(0.95,0.95,0.95,skin,0,2.9,0,g);
+  box(1.0,0.3,1.0,hair,0,3.45,0,g);
+  box(0.14,0.14,0.05,0x1d2433,-0.2,2.95,0.48,g); box(0.14,0.14,0.05,0x1d2433,0.2,2.95,0.48,g);
+  box(0.36,0.08,0.05,0x7a3b2e,0,2.7,0.48,g);
+  g.userData={legL,legR,armL,armR,body};
+  return g;
+}
+
+// Layout
+const CENTER=island(0,0,10,0x7cc86a,0x9b7b55);
+// center fountain-ish plaza
+box(3,0.4,3,0xe8dcc0,0,0.2,0,CENTER); const tower=box(1,3,1,0xffc93c,0,1.9,0,CENTER); SOLIDS.push({x:0,z:0,r:2.3});
+const welcome=label("Islas del Saber","#fffaf0","#1d2433",1.1); welcome.position.set(0,5,0); scene.add(welcome);
+
+const ISL_R=30; const GUARD={};
+const THEMES={mat:{top:0xf3b27a},com:{top:0xc9b3ea},ps:{top:0xe8a79d},cyt:{top:0x8fd48f},ing:{top:0x9cc4ec}};
+AREAS.forEach((a,i)=>{
+  const ang=-Math.PI/2+i*(2*Math.PI/5);
+  const x=Math.cos(ang)*ISL_R, z=Math.sin(ang)*ISL_R;
+  const g=island(x,z,9,THEMES[a].top,0x9b7b55);
+  bridge(Math.cos(ang)*9.2,Math.sin(ang)*9.2,Math.cos(ang)*21.8,Math.sin(ang)*21.8);
+  const col=new THREE.Color(C[a].color).getHex();
+  // guardian
+  const npc=character(col,0x2b3445,0xd9a877,0x2a1d14); npc.position.set(x,0,z); npc.lookAt(0,0,0); scene.add(npc);
+  SOLIDS.push({x,z,r:1.1});
+  const tag=label(C[a].name,C[a].color,"#ffffff"); tag.position.set(x,5.2,z); scene.add(tag);
+  const star=new THREE.Mesh(new THREE.OctahedronGeometry(0.7),new THREE.MeshLambertMaterial({color:0xffc93c,emissive:0x664400}));
+  star.position.set(x,6.8,z); star.visible=false; scene.add(star);
+  GUARD[a]={x,z,npc,star};
+  // themed props (world-space, off the path)
+  const px=(dx,dz)=>[x+dx,z+dz];
+  const side=[-Math.sin(ang),Math.cos(ang)]; const out=[Math.cos(ang),Math.sin(ang)];
+  const at=(s,o)=>px(side[0]*s+out[0]*o,side[1]*s+out[1]*o);
+  const addSolid=(p,r)=>SOLIDS.push({x:p[0],z:p[1],r});
+  if(a==="mat"){ // number blocks
+    [[-5,1,0xe8743b],[-5,2,0xffc93c],[-5,3,0x2f78c4],[5,1,0x2e9e5b],[5,2,0xe8743b]].forEach(([s,h,c])=>{const p=at(s,1); box(1.6,1.6,1.6,c,p[0],h*1.6-0.8,p[1]);});
+    addSolid(at(-5,1),1.5); addSolid(at(5,1),1.5);
+  }
+  if(a==="com"){ // giant open book
+    const p=at(-4.5,2); const b=new THREE.Group(); b.position.set(p[0],0,p[1]); b.rotation.y=-ang; scene.add(b);
+    const l=box(2.4,0.25,3,0xfffaf0,-1.25,1.2,0,b); l.rotation.z=0.25; const r=box(2.4,0.25,3,0xfffaf0,1.25,1.2,0,b); r.rotation.z=-0.25;
+    box(0.3,1.1,3,0x8a5cc9,0,0.55,0,b); addSolid(p,2.2);
+    const q=at(4.5,2); box(0.4,2.4,0.4,0x7a4f2a,q[0],1.2,q[1]); const sg=label("Aa","#fffaf0","#8a5cc9",0.9); sg.position.set(q[0],3,q[1]); scene.add(sg); addSolid(q,0.6);
+  }
+  if(a==="ps"){ // stepped huaca
+    const p=at(-4.5,2); [[4,0.8],[3,0.8],[2,0.8]].forEach(([w,h],k)=>box(w,h,w,0xc9a26b,p[0],0.4+k*0.8,p[1])); addSolid(p,2.3);
+    const q=at(4.5,2); box(0.2,4,0.2,0x7a4f2a,q[0],2,q[1]); box(1.8,1.1,0.08,0xc8453a,q[0]+0.95,3.4,q[1]); addSolid(q,0.5);
+  }
+  if(a==="cyt"){ // tree + planet
+    const p=at(-4.5,2); box(0.7,2.4,0.7,0x7a4f2a,p[0],1.2,p[1]); box(2.8,2.2,2.8,0x2e9e5b,p[0],3.3,p[1]); box(1.8,1.2,1.8,0x3fb56d,p[0],4.9,p[1]); addSolid(p,1);
+    const q=at(4.5,2); const pl=new THREE.Mesh(new THREE.SphereGeometry(1.2,20,16),mat(0x2f78c4)); pl.position.set(q[0],2.6,q[1]); pl.castShadow=true; scene.add(pl);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(1.9,0.12,8,32),mat(0xffc93c)); ring.position.copy(pl.position); ring.rotation.x=1.2; scene.add(ring);
+    box(0.25,1.4,0.25,0x6b6252,q[0],0.7,q[1]); addSolid(q,0.8); GUARD[a].spin=[pl,ring];
+  }
+  if(a==="ing"){ // signpost + drum
+    const p=at(-4.5,2); box(0.3,3.4,0.3,0x7a4f2a,p[0],1.7,p[1]); const s1=label("Hello!","#2f78c4","#fff",0.8); s1.position.set(p[0],3.6,p[1]); scene.add(s1); addSolid(p,0.5);
+    const q=at(4.5,2); const d=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1.2,20),mat(0xc8453a)); d.position.set(q[0],0.6,q[1]); d.castShadow=true; scene.add(d);
+    const top=new THREE.Mesh(new THREE.CylinderGeometry(1.02,1.02,0.08,20),mat(0xfffaf0)); top.position.set(q[0],1.23,q[1]); scene.add(top); addSolid(q,1.1);
+  }
+});
+
+// A few clouds
+const clouds=[];
+for(let i=0;i<9;i++){ const g=new THREE.Group(); const cx=R(-70,70), cz=R(-70,70); g.position.set(cx,R(22,30),cz);
+  for(let k=0;k<3;k++){ const m=new THREE.Mesh(new THREE.BoxGeometry(R(4,7),2,R(3,5)),new THREE.MeshLambertMaterial({color:0xffffff})); m.position.set(k*3-3,Math.random(),Math.random()*2); g.add(m); }
+  scene.add(g); clouds.push(g); }
+
+// Player
+let player=null;
+function makePlayer(){ if(player) scene.remove(player); player=character(new THREE.Color(me?me.player.shirt:pickShirt).getHex(),0x34495e,0xe0b085,0x3b2616); player.position.set(0,0,5); scene.add(player); }
+makePlayer();
+let nameTag=null;
+function makeNameTag(){ if(nameTag){scene.remove(nameTag);} if(!me) {nameTag=null;return;} nameTag=label(me.player.display_name,"rgba(29,36,51,.75)","#fff",0.7); scene.add(nameTag); }
+
+/* ---------------- Input ---------------- */
+const keys={}; let jx=0,jz=0; let vy=0,py=0; let paused=true; let near=null;
+addEventListener("keydown",e=>{ if(e.target.tagName==="INPUT") return; keys[e.key.toLowerCase()]=true; if(e.key===" ") {jump(); e.preventDefault();} if((e.key==="e"||e.key==="Enter")&&near&&!paused) openQuiz(near); });
+addEventListener("keyup",e=>{ keys[e.key.toLowerCase()]=false; });
+function jump(){ if(!paused && py<=0.001){ vy=9; } }
+$("jumpBtn").addEventListener("pointerdown",e=>{e.preventDefault();jump();});
+
+const joy=$("joy"), knob=$("knob"); let joyId=null;
+function joyMove(e){ const r=joy.getBoundingClientRect(); let dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2); const max=r.width/2-20; const d=Math.hypot(dx,dy); if(d>max){dx*=max/d;dy*=max/d;} knob.style.transform=`translate(${dx}px,${dy}px)`; jx=dx/max; jz=dy/max; }
+joy.addEventListener("pointerdown",e=>{ joyId=e.pointerId; joy.setPointerCapture(e.pointerId); joyMove(e); });
+joy.addEventListener("pointermove",e=>{ if(e.pointerId===joyId) joyMove(e); });
+const joyEnd=e=>{ if(e.pointerId!==joyId) return; joyId=null; jx=jz=0; knob.style.transform=""; };
+joy.addEventListener("pointerup",joyEnd); joy.addEventListener("pointercancel",joyEnd);
+document.addEventListener("touchmove",e=>{ if(e.target.closest && !e.target.closest(".sheet")) e.preventDefault(); },{passive:false});
+document.addEventListener("gesturestart",e=>e.preventDefault());
+
+$("talkBtn").addEventListener("click",()=>{ if(near) openQuiz(near); });
+
+/* ---------------- Loop ---------------- */
+const clock=new THREE.Clock(); let walkT=0; let heading=0;
+const camOff=new THREE.Vector3(0,13,15);
+function resize(){ const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.fov=w<h?68:55; camera.updateProjectionMatrix(); }
+addEventListener("resize",resize); resize();
+
+function tick(){
+  const dt=Math.min(clock.getDelta(),0.05); const t=clock.elapsedTime;
+  let ix=jx, iz=jz;
+  if(keys["arrowleft"]||keys["a"]) ix-=1; if(keys["arrowright"]||keys["d"]) ix+=1;
+  if(keys["arrowup"]||keys["w"]) iz-=1; if(keys["arrowdown"]||keys["s"]) iz+=1;
+  const mag=Math.min(1,Math.hypot(ix,iz));
+  if(!paused && mag>0.12){
+    const sp=9*mag*dt, nx=ix/Math.hypot(ix,iz), nz=iz/Math.hypot(ix,iz);
+    const p=player.position; let moved=false;
+    // Try the intended direction first, then slightly turned ones, so the player slides around obstacles.
+    for(const turn of [0,0.5,-0.5,1.0,-1.0,1.4,-1.4,1.65,-1.65]){
+      const c=Math.cos(turn), s=Math.sin(turn); const dx=nx*c-nz*s, dz=nx*s+nz*c;
+      const tx=p.x+dx*sp, tz=p.z+dz*sp;
+      if(walkable(tx,tz)){ p.x=tx; p.z=tz; moved=true; break; }
+    }
+    if(!moved){ const tx=p.x+nx*sp, tz=p.z+nz*sp; if(walkable(tx,p.z)) p.x=tx; else if(walkable(p.x,tz)) p.z=tz; }
+    const target=Math.atan2(nx,nz); let diff=target-heading; diff=Math.atan2(Math.sin(diff),Math.cos(diff)); heading+=diff*Math.min(1,dt*12);
+    player.rotation.y=heading; walkT+=dt*10*mag;
+  } else { walkT*=0.85; }
+  const sw=Math.sin(walkT)*0.7*Math.min(1,Math.abs(walkT)>0.01?1:0);
+  const u=player.userData; u.legL.rotation.x=sw; u.legR.rotation.x=-sw; u.armL.rotation.x=-sw; u.armR.rotation.x=sw;
+  vy-=26*dt; py=Math.max(0,py+vy*dt); if(py===0) vy=0; player.position.y=py;
+  if(nameTag) nameTag.position.set(player.position.x,player.position.y+4.4,player.position.z);
+
+  // guardians
+  near=null;
+  AREAS.forEach(a=>{ const g=GUARD[a];
+    g.npc.position.y=Math.abs(Math.sin(t*2+g.x))*0.15;
+    g.star.visible=starsOf(a)>0; g.star.rotation.y=t*2; g.star.position.y=6.8+Math.sin(t*2)*0.2;
+    if(g.spin){ g.spin[0].rotation.y=t*0.6; g.spin[1].rotation.z=t*0.4; }
+    if(Math.hypot(player.position.x-g.x,player.position.z-g.z)<4) near=a;
+  });
+  const tb=$("talkBtn");
+  if(near&&!paused){ tb.hidden=false; tb.textContent="Hablar con "+C[near].name; tb.style.background=C[near].color; } else tb.hidden=true;
+  tower.rotation.y=t*0.5;
+  clouds.forEach((c,i)=>{ c.position.x+=dt*(0.6+i*0.05); if(c.position.x>90) c.position.x=-90; });
+
+  const want=player.position.clone().add(camOff); camera.position.lerp(want,Math.min(1,dt*4));
+  camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------------- Quiz ---------------- */
+let round=null;
+function openQuiz(area){
+  paused=true; jx=jz=0; knob.style.transform="";
+  round={area,qs:buildRound(area),i:0,ok:0,res:[]};
+  $("qHead").style.background=C[area].color; $("qTitle").textContent="Isla de "+C[area].name;
+  $("quiz").hidden=false; showQ();
+}
+function dots(){ const d=$("qDots"); d.innerHTML=""; round.qs.forEach((_,k)=>{ const s=document.createElement("span"); s.className="dot"+(round.res[k]===true?" ok":round.res[k]===false?" no":""); d.appendChild(s); }); }
+function el(tag,cls,txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
+function showQ(){
+  dots(); const q=round.qs[round.i]; const body=$("qBody"); body.innerHTML="";
+  body.appendChild(el("div","tag",`Reto ${round.i+1} de 5 · ${q.c}`));
+  if(q.p) body.appendChild(el("div","passage",q.p));
+  body.appendChild(el("p","q",q.q));
+  const opts=el("div","opts"); const correct=q.o[0];
+  shuffle(q.o).forEach(txt=>{ const b=el("button","opt",txt); b.type="button";
+    b.addEventListener("click",()=>answer(b,txt===correct,correct,opts,q)); opts.appendChild(b); });
+  body.appendChild(opts);
+  const first=opts.querySelector("button"); if(first) first.focus({preventScroll:true});
+}
+function answer(btn,ok,correct,opts,q){
+  opts.querySelectorAll("button").forEach(b=>{ b.disabled=true; if(b.textContent===correct) b.classList.add("right"); });
+  if(!ok) btn.classList.add("wrong");
+  round.res[round.i]=ok; if(ok){ round.ok++; if(me){ me.player.coins+=10; refreshHud(); } }
+  dots();
+  const fb=el("div","feedback "+(ok?"good":"bad")); const s=el("strong",null,ok?"¡Correcto! +10 🪙 ":"Casi. La respuesta es: "+correct+". ");
+  fb.appendChild(s); fb.appendChild(document.createTextNode(q.e)); $("qBody").appendChild(fb);
+  const nx=el("button","primary",round.i<4?"Siguiente":"Ver resultado"); nx.style.background=C[round.area].color; nx.type="button";
+  nx.addEventListener("click",()=>{ round.i++; if(round.i<5) showQ(); else finish(); });
+  $("qBody").appendChild(nx); nx.focus({preventScroll:true}); nx.scrollIntoView({block:"nearest"});
+}
+async function finish(){
+  const a=round.area, ok=round.ok; const st=ok===5?3:ok===4?2:ok===3?1:0;
+  const prev=starsOf(a); dots();
+  const body=$("qBody"); body.innerHTML="";
+  body.appendChild(el("div","stars","★".repeat(st)+"☆".repeat(3-st)));
+  body.appendChild(el("p","q",`Acertaste ${ok} de 5.`));
+  body.appendChild(el("p",null, st===3?"¡Isla dominada! Eres un gran explorador.": st>0?"¡Bien! Vuelve a intentarlo para ganar más estrellas. Cada ronda trae retos distintos.":"Sigue practicando: cada ronda trae retos distintos. ¡Tú puedes!"));
+  if(st>prev && prev>0) body.appendChild(el("p","tag","Nuevo récord en esta isla"));
+  const note=el("p","saved","Guardando tu progreso…"); body.appendChild(note);
+  const row=el("div","row"); row.style.justifyContent="flex-end";
+  const again=el("button","ghost","Jugar otra ronda"); again.type="button"; again.addEventListener("click",()=>openQuiz(a));
+  const back=el("button","primary","Volver al mundo"); back.type="button"; back.style.background=C[a].color;
+  back.addEventListener("click",closeQuiz);
+  row.append(again,back); body.appendChild(row); back.focus({preventScroll:true});
+  if(!me) return;
+  const r=await api("save_round",{p_token:me.token,p_area:a,p_correct:ok});
+  if(!r.error){ applyState(r); note.textContent="Progreso guardado ✓"; flushPending(); }
+  else if(r.error==="red"||r.error==="servidor"){
+    const q=store.get(PENDING_KEY)||[]; q.push({token:me.token,area:a,correct:ok}); store.set(PENDING_KEY,q);
+    note.textContent="Sin conexión: se guardará cuando vuelva internet.";
+  } else if(r.error==="sesion"){ note.textContent="Tu sesión terminó. Vuelve a entrar para guardar."; }
+  else note.textContent=errText(r);
+}
+function closeQuiz(){ $("quiz").hidden=true; paused=false; }
+
+/* ---------------- Menus ---------------- */
+const SHIRTS=["#f2c14e","#e8743b","#2f78c4","#2e9e5b","#8a5cc9","#e0567a"];
+function swatches(box,current,onPick){
+  box.innerHTML="";
+  SHIRTS.forEach(c=>{ const b=document.createElement("button"); b.type="button"; b.className="swatch"; b.style.background=c;
+    b.setAttribute("aria-label","Color "+c); b.setAttribute("aria-pressed",String(c===current));
+    b.addEventListener("click",()=>{ box.querySelectorAll(".swatch").forEach(x=>x.setAttribute("aria-pressed","false")); b.setAttribute("aria-pressed","true"); onPick(c); });
+    box.appendChild(b); });
+}
+swatches($("swatches"),pickShirt,c=>{ pickShirt=c; makePlayer(); });
+$("modeTag").textContent=ONLINE?"Progreso guardado en la nube":"Modo local: se guarda solo en este dispositivo";
+
+function setTab(which){
+  const login=which==="login";
+  $("tabLogin").setAttribute("aria-selected",String(login)); $("tabNew").setAttribute("aria-selected",String(!login));
+  $("loginForm").hidden=!login; $("newForm").hidden=login;
+  (login?$("liUser"):$("nwName")).focus({preventScroll:true});
+}
+$("tabLogin").addEventListener("click",()=>setTab("login"));
+$("tabNew").addEventListener("click",()=>setTab("new"));
+["liUser","nwUser"].forEach(id=>$(id).addEventListener("input",e=>{ e.target.value=e.target.value.toLowerCase().replace(/\s/g,""); }));
+["liPin","nwPin","nwPin2"].forEach(id=>$(id).addEventListener("input",e=>{ e.target.value=e.target.value.replace(/\D/g,""); }));
+
+function showErr(id,msg){ const e=$(id); e.textContent=msg; e.hidden=!msg; }
+function enterWorld(){
+  $("start").hidden=true; paused=false; $("hint").style.opacity=1;
+  setTimeout(()=>{$("hint").style.opacity=0;},6000);
+}
+$("loginForm").addEventListener("submit",async e=>{
+  e.preventDefault(); showErr("liErr","");
+  const u=$("liUser").value.trim(), p=$("liPin").value;
+  if(!u||!p){ showErr("liErr","Escribe tu usuario y tu PIN."); return; }
+  const btn=$("liBtn"); btn.disabled=true; btn.textContent="Entrando…";
+  const r=await api("login_player",{p_username:u,p_pin:p});
+  btn.disabled=false; btn.textContent="¡A jugar!";
+  if(r.error){ showErr("liErr",errText(r)); $("liPin").value=""; return; }
+  $("liPin").value=""; applyState(r); flushPending(); enterWorld();
+});
+$("newForm").addEventListener("submit",async e=>{
+  e.preventDefault(); showErr("nwErr","");
+  const n=$("nwName").value.trim(), u=$("nwUser").value.trim(), p=$("nwPin").value, p2=$("nwPin2").value;
+  if(!n){ showErr("nwErr","Escribe tu nombre."); return; }
+  if(!/^[a-z0-9_]{3,16}$/.test(u)){ showErr("nwErr",ERR.usuario_invalido); return; }
+  if(!/^[0-9]{4,6}$/.test(p)){ showErr("nwErr",ERR.pin_invalido); return; }
+  if(p!==p2){ showErr("nwErr","Los dos PIN no son iguales."); return; }
+  const btn=$("nwBtn"); btn.disabled=true; btn.textContent="Creando…";
+  const r=await api("register_player",{p_username:u,p_display:n,p_pin:p,p_shirt:pickShirt});
+  btn.disabled=false; btn.textContent="Crear y jugar";
+  if(r.error){ showErr("nwErr",errText(r)); return; }
+  $("nwPin").value=$("nwPin2").value=""; applyState(r); enterWorld();
+});
+
+function fmtDate(iso){
+  if(!iso) return "—";
+  try{ return new Date(iso).toLocaleDateString("es-PE",{day:"numeric",month:"short"}); }catch(e){ return "—"; }
+}
+function showProg(){
+  if(!me) return;
+  $("progTitle").textContent="Progreso de "+me.player.display_name;
+  $("progCoins").textContent=me.player.coins;
+  const tb=$("progList"); tb.innerHTML="";
+  AREAS.forEach(a=>{
+    const g=me.progress[a]||{best_stars:0,rounds:0,correct:0,answered:0};
+    const tr=document.createElement("tr");
+    const td1=document.createElement("td"); const pip=el("span","pip"); pip.style.background=C[a].color; td1.append(pip,document.createTextNode(C[a].name));
+    const pct=g.answered?Math.round(100*g.correct/g.answered)+"%":"—";
+    tr.append(td1,el("td","st","★".repeat(g.best_stars)+"☆".repeat(3-g.best_stars)),el("td",null,String(g.rounds)),el("td",null,pct),el("td",null,fmtDate(g.last_played)));
+    tb.appendChild(tr);
+  });
+  const pend=(store.get(PENDING_KEY)||[]).filter(x=>x.token===me.token).length;
+  $("saveNote").textContent=(ONLINE?"Usuario: "+me.player.username+" · guardado en la nube.":"Usuario: "+me.player.username+" · guardado solo en este dispositivo.")+(pend?` ${pend} ronda(s) esperando conexión.`:"");
+  swatches($("swatches2"),me.player.shirt,async c=>{
+    me.player.shirt=c; makePlayer();
+    const r=await api("update_shirt",{p_token:me.token,p_shirt:c}); if(!r.error) applyState(r);
+  });
+  paused=true; $("prog").hidden=false;
+}
+$("menuBtn").addEventListener("click",showProg);
+$("progClose").addEventListener("click",()=>{ $("prog").hidden=true; paused=false; flushPending(); });
+$("logoutBtn").addEventListener("click",async()=>{
+  const t=me&&me.token; me=null; store.set(TOKEN_KEY,null);
+  $("whoChip").hidden=true; refreshHud(); makeNameTag(); makePlayer();
+  $("prog").hidden=true; $("start").hidden=false; paused=true; setTab("login");
+  if(t) api("logout_player",{p_token:t});
+});
+let srcFrom=null;
+function openSrc(from){ srcFrom=from; $(from).hidden=true; $("srcs").hidden=false; }
+$("srcBtn1").addEventListener("click",()=>openSrc("start"));
+$("srcBtn2").addEventListener("click",()=>openSrc("prog"));
+$("srcClose").addEventListener("click",()=>{ $("srcs").hidden=true; $(srcFrom).hidden=false; });
+
+// Resume a saved session on this device
+(async()=>{
+  const t=store.get(TOKEN_KEY); if(!t) return;
+  const r=await api("get_state",{p_token:t});
+  if(!r.error){ applyState(r); flushPending(); enterWorld(); }
+  else if(r.error==="sesion") store.set(TOKEN_KEY,null);
+})();
+
+refreshHud();
+if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(()=>{ LABELS.forEach(drawLabel); }); }
+requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>
