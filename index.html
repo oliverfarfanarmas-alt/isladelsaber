@@ -372,8 +372,8 @@ function buildRound(area){
 /* Pega aquí los datos de tu proyecto Supabase (Project Settings > API).
    Si se dejan vacíos, el juego funciona en "modo local": los jugadores
    se guardan solo en este dispositivo. */
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+const SUPABASE_URL = "https://gnryysogwjsqhpzoxche.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imducnl5c29nd2pzcWhwem94Y2hlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNDQ0MTcsImV4cCI6MjEwNjYyMDQxN30.vFiSbomUQQGUUL6jsBlIH1m8OmN_NNmk5v4uLydS6BI";
 
 const $=id=>document.getElementById(id);
 const store={ get(k){ try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;} },
